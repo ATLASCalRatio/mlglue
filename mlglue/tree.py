@@ -39,7 +39,7 @@ class Tree:
         Returns:
             nothing
         """
-        print (self.depth + 1) * "-" + str(self)
+        print ((self.depth + 1) * "-" + str(self))
         for ch in self.children:
             node_dict[ch].print_out(node_dict)
 
@@ -388,7 +388,7 @@ class BDTxgboost(BDT):
             kind = "multiclass"
         else:
             kind = "regression"
-        print model.objective, kind
+        print (model.objective, kind)
 
         trees = []
         for tree_dump in model.booster().get_dump():
