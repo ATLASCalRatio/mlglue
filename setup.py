@@ -1,13 +1,15 @@
 #!/usr/bin/env python
 
-from distutils.core import setup
+from setuptools import setup
 
 setup(name='mlglue',
-    version='0.1',
+    version='0.2',
     description='Glue between machine learning libraries',
     author='Joosep Pata',
     author_email='pata@phys.ethz.ch',
-    url='http://github.com/jpata/mlglue',
+	maintainer = 'Gordon Watts',
+	maintainer_email = 'gwatts@uw.edu'
+    url='https://github.com/ATLASCalRatio/mlglue',
     packages=['mlglue'],
     install_requires=['sklearn', 'numpy'],
 )
