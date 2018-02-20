@@ -3,7 +3,7 @@
 from setuptools import setup
 
 setup(name='mlglue',
-    version='0.2',
+    version='0.24',
     description='Glue between machine learning libraries',
     author='Joosep Pata',
     author_email='pata@phys.ethz.ch',

@@ -114,7 +114,7 @@ def sklearn_to_nodetree(cls, nodetree, sklearn_tree, node_id=0, parent_id=-1, de
             ("val", sklearn_tree.value[node_id][0,0]/cls.n_estimators)
         )
         nodetree[node_id] = n
-        if nodetree.has_key(parent_id):
+        if parent_id in nodetree:
             nodetree[parent_id].children += [node_id]
     #this is not a leaf node
     else:
@@ -126,7 +126,7 @@ def sklearn_to_nodetree(cls, nodetree, sklearn_tree, node_id=0, parent_id=-1, de
             ("cut", sklearn_tree.feature[node_id], sklearn_tree.threshold[node_id])
         )
         nodetree[node_id] = n
-        if nodetree.has_key(parent_id):
+        if parent_id in nodetree:
             nodetree[parent_id].children += [node_id]
 
     left_child = sklearn_tree.children_left[node_id]
@@ -196,7 +196,7 @@ def xgbtree_to_nodetree(tree):
             nodes[node_index] = Tree(node_index, [], my_parent, node_depth, ("val", val))
 
         #insert node into final node dict
-        if nodes.has_key(my_parent):
+        if my_parent in nodes:
             nodes[my_parent].children += [node_index]
 
         prev_depth = node_depth
@@ -395,7 +395,7 @@ class BDTxgboost(BDT):
             tree = xgbtree_to_nodetree(tree_dump)
             trees += [tree]
 
-        super(BDTxgboost, self).__init__(trees, kind, feature_names, target_names, model.max_depth, model.learning_rate)
+        super(BDTxgboost, self).__init__(trees, kind, feature_names, target_names, safe_attribute (lambda: model.max_depth, 100), model.learning_rate)
 
     def eval(self, features):
         proba = self.model.predict_proba(features)[:, 1]
@@ -426,13 +426,15 @@ class BDTsklearn(BDT):
         trees = []
         #Loop over decision trees, in scikit that's a 2D array (N_estimators, N_classes)
         for sklearn_trees in model.estimators_:
-             #write trees for different classes next to each other
-            for class_tree in sklearn_trees:
+            #write trees for different classes next to each other
+            # If this is a single tree, then just grab it.
+
+            for class_tree in make_iter(sklearn_trees):
                 nodetree = {}
                 sklearn_to_nodetree(model, nodetree, class_tree.tree_, 0, -1, -1)
                 trees += [nodetree]
 
-        super(BDTsklearn, self).__init__(trees, kind, feature_names, target_names, model.max_depth, model.learning_rate)
+        super(BDTsklearn, self).__init__(trees, kind, feature_names, target_names, safe_attribute(lambda: model.max_depth, 100), model.learning_rate)
 
 
     def eval(self, vals):
@@ -498,3 +500,19 @@ def tree_to_tmva(outfile, nodetree, current_node, scale):
     for child in nodetree[current_node].children:
         tree_to_tmva(outfile, nodetree, child, scale)
     outfile.write((nodetree[current_node].depth + 1)*"    " + "</Node>\n")
+
+def make_iter(possible):
+    '''Make possible iterable by either returning it if it is, or putting it in a list'''
+    try:
+        bogus = iter(possible)
+    except:
+        return [possible]
+    else:
+        return possible
+
+def safe_attribute (func, default_value):
+    '''Safely execute a lambda function, return default value if there is an AttributeError'''
+    try:
+        return func()
+    except AttributeError:
+        return default_value
