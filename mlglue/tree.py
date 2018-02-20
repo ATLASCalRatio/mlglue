@@ -333,7 +333,7 @@ class BDT(object):
         itree = 0
         for tree in self.trees:
             outfile.write(
-                '<BinaryTree type="DecisionTree" boostWeight="0.0" itree="{0}">\n'.format(
+                '<BinaryTree type="DecisionTree" boostWeight="1.0" itree="{0}">\n'.format(
                     itree, self.learning_rate
                 )
             )
