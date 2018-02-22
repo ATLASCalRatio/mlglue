@@ -1,6 +1,6 @@
 # mlglue
 
-This library contains tools to simplify conversion between models in different machine learning libraries.
+This python 3 library contains tools to simplify conversion between models in different machine learning libraries.
 In particular, it contains conversion code Gradient Boosted Decision Trees for `sklearn -> TMVA` and `xgboost -> TMVA`.
 Binary classification, multiclass and regression trees are supported.
 
@@ -21,6 +21,13 @@ Clone this repository, install with
 ~~~
 python setup.py install
 ~~~
+
+You'll need to make sure that scipy, numpy, and sklearn are all installed (using pip3) for this package to work.
+
+To run the tests you'll need to download the following two data files and place them in the directory where you run the tests:
+
+- http://www.csie.ntu.edu.tw/~cjlin/libsvmtools/datasets/multiclass/usps.bz2 
+- http://www.csie.ntu.edu.tw/~cjlin/libsvmtools/datasets/multiclass/usps.t.bz2 
 
 ### Quickstart
 
