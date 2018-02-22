@@ -1,3 +1,8 @@
 build/*
 dist/*
 mlglue.egg-info/*
+mlglue/__pycache__
+*.xml
+
+# This is for the commmon dataset that is used in testing.
+usps*
