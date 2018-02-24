@@ -1,7 +1,7 @@
 import re
 import numpy as np
-from sklearn.ensemble import GradientBoostingClassifier, GradientBoostingRegressor
-from sklearn.tree import _tree
+from sklearn.ensemble import GradientBoostingClassifier, GradientBoostingRegressor, AdaBoostClassifier
+from sklearn.tree import _tree, DecisionTreeClassifier
 
 class Tree:
     """Represents a node in a decision tree, identified by a unique integer id
@@ -91,7 +91,8 @@ class Tree:
         )
 
 def sklearn_to_nodetree(cls, nodetree, sklearn_tree, node_id=0, parent_id=-1, depth=-1):
-    """Recursively converts a sklearn GradientBoosting{Classifier,Regressor} to a generic representation
+    """Recursively converts a sklearn GradientBoosting{Classifier,Regressor} to a generic representation.
+    This assume binary representation in this tree.
     
     Args:
         nodetree (dict id->Node): The output dictionary with the nodes
@@ -135,6 +136,57 @@ def sklearn_to_nodetree(cls, nodetree, sklearn_tree, node_id=0, parent_id=-1, de
         sklearn_to_nodetree(cls, nodetree, sklearn_tree, left_child, node_id, depth+1)
     if right_child != _tree.TREE_LEAF:
         sklearn_to_nodetree(cls, nodetree, sklearn_tree, right_child, node_id, depth+1)
+
+    return nodetree
+
+def sklearn_to_nodetree_for_class(cls, nodetree, class_index, sklearn_tree, node_id=0, parent_id=-1, depth=-1, norm = 1.0):
+    """Recursively converts a sklearn GradientBoosting{Classifier,Regressor} to a generic representation.
+    This assume binary representation in this tree.
+    
+    Args:
+        nodetree (dict id->Node): The output dictionary with the nodes
+        sklearn_tree (DecisionTreeRegressor): The input decision tree
+        class_index: which class we are going to look at
+        node_id (int): the id of the root node
+        parent_id (int): the id of the parent node
+        depth (int): The current depth
+    
+    Returns:
+        dict int->Tree: The output node tree
+    """
+
+    #if the left (or right) child node id is -1, then this node is already a leaf node
+    if sklearn_tree.children_left[node_id] == _tree.TREE_LEAF:
+        v = sklearn_tree.value[node_id][0,class_index]/cls.n_estimators/norm
+        n = Tree(
+            node_id,
+            [],
+            parent_id,
+            depth,
+            ("val", v)
+        )
+        nodetree[node_id] = n
+        if parent_id in nodetree:
+            nodetree[parent_id].children += [node_id]
+    #this is not a leaf node
+    else:
+        n = Tree(
+            node_id,
+            [],
+            parent_id,
+            depth,
+            ("cut", sklearn_tree.feature[node_id], sklearn_tree.threshold[node_id])
+        )
+        nodetree[node_id] = n
+        if parent_id in nodetree:
+            nodetree[parent_id].children += [node_id]
+
+    left_child = sklearn_tree.children_left[node_id]
+    right_child = sklearn_tree.children_right[node_id]
+    if left_child != _tree.TREE_LEAF:
+        sklearn_to_nodetree_for_class(cls, nodetree, class_index, sklearn_tree, left_child, node_id, depth+1, norm)
+    if right_child != _tree.TREE_LEAF:
+        sklearn_to_nodetree_for_class(cls, nodetree, class_index, sklearn_tree, right_child, node_id, depth+1, norm)
 
     return nodetree
 
@@ -417,22 +469,53 @@ class BDTsklearn(BDT):
         kind = None
         if isinstance(model, GradientBoostingRegressor):
             kind = "regression"
-        elif isinstance(model, GradientBoostingClassifier):
+        elif isinstance(model, GradientBoostingClassifier) or isinstance(model, AdaBoostClassifier):
             if len(target_names) == 2:
                 kind = "binary"
             else:
                 kind = "multiclass"
 
-        trees = []
-        #Loop over decision trees, in scikit that's a 2D array (N_estimators, N_classes)
-        for sklearn_trees in model.estimators_:
-            #write trees for different classes next to each other
-            # If this is a single tree, then just grab it.
+        # Determine the normalization to be applied.
+        norm = 1.00
+        if isinstance(model, AdaBoostClassifier):
+            first_tree_leaf_values = model.estimators_[0].tree_.value[0][0]
+            print (first_tree_leaf_values)
+            norm = sum(first_tree_leaf_values)
+        print ("norm is {0}".format(norm))
 
-            for class_tree in make_iter(sklearn_trees):
-                nodetree = {}
-                sklearn_to_nodetree(model, nodetree, class_tree.tree_, 0, -1, -1)
-                trees += [nodetree]
+        # Loop over decision trees, in scikit that's a 2D array (N_estimators, N_classes)
+        trees = []
+        for sklearn_trees in model.estimators_:
+            # write trees for different classes next to each other. So if there are 3 classes and 2 boosting rounds, you'll get:
+            #   Tree for Class 1, tree 1
+            #   Tree for Class 2, tree 1
+            #   Tree for Class 3, tree 1
+            #   Tree for Class 1, tree 2
+            #   Tree for Class 2, tree 2
+            #   Tree for Class 3, tree 3
+
+            # If this is a tree, then it should be multi-class
+            if isinstance(sklearn_trees, DecisionTreeClassifier):
+                if len(sklearn_trees.tree_.value[0][0]) != len(target_names):
+                    raise BaseException("DecisitonTreeClassifier must have the same number of classes ({0}) as targets were given ({1}).".format(len(class_tree.tree_.values[0][0]), len(target_names)))
+
+                for iClass in range(0, len(target_names)):
+                    nodetree = {}
+                    sklearn_to_nodetree_for_class(model, nodetree, iClass, sklearn_trees.tree_, 0, -1, -1, norm)
+                    trees += [nodetree]
+                    print (len(trees))
+
+            else:
+                # Now dealing with binary classifiers.
+                for class_tree in sklearn_trees:
+                    nodetree = {}
+
+                    # Check that the tree is in a format we can deal with - that is a single binary class.
+                    if len(class_tree.tree_.value[0][0]) != 1:
+                        raise BaseException("Unable to translate a DecisionTreeClassifier that has more than a binary classification (this one has {0})".format(len(class_tree.tree_.value[0][0])))
+
+                    sklearn_to_nodetree(model, nodetree, class_tree.tree_, 0, -1, -1)
+                    trees += [nodetree]
 
         super(BDTsklearn, self).__init__(trees, kind, feature_names, target_names, safe_attribute(lambda: model.max_depth, 100), model.learning_rate)
 
@@ -460,6 +543,7 @@ class BDTsklearn(BDT):
                         r = t.predict(vals)
                         ret[:, iclass] += r * scale
 
+                # Multiclass normalization
                 norm = np.zeros(ret.shape)
                 for i in range(self.model.n_classes_):
                     for j in range(self.model.n_classes_):
@@ -468,6 +552,7 @@ class BDTsklearn(BDT):
 
                 ret = 1.0 / (1.0 + norm)        
                 return ret
+
             #binary classification
             elif self.model.n_classes_ == 2:
                 ret = np.zeros(vals.shape[0])
@@ -476,6 +561,40 @@ class BDTsklearn(BDT):
                     r = t.predict(vals)
                     ret += r * scale
                 return 2.0/(1.0 + np.exp(-2.0 * ret)) - 1
+
+        elif isinstance(self.model, AdaBoostClassifier):
+            if self.model.n_classes_ > 2:
+                ret = np.zeros((vals.shape[0], self.model.n_classes_))
+                #for t in self.model.estimators_:
+                #    ret += t.predict_proba(vals) * scale
+				for tree in self.model.estimators_:
+					classes = tree.predict(vals)
+
+                for iclass in range(self.model.n_classes_):
+                    for itree, t in enumerate(self.model.estimators_[:, iclass]):
+                        r = t.predict(vals)
+                        ret[:, iclass] += r * scale
+
+                # Multiclass normalization
+                norm = np.zeros(ret.shape)
+                for i in range(self.model.n_classes_):
+                    for j in range(self.model.n_classes_):
+                        if i != j:
+                            norm[:, i] += np.exp(ret[:, j] - ret[:, i])
+
+                ret = 1.0 / (1.0 + norm)        
+                return ret
+
+            #binary classification
+            elif self.model.n_classes_ == 2:
+                raise BaseException("2 class evaluation not tested yet")
+                ret = np.zeros(vals.shape[0])
+
+                for itree, t in enumerate(self.model.estimators_[:, 0]):
+                    r = t.predict(vals)
+                    ret += r * scale
+                return 2.0/(1.0 + np.exp(-2.0 * ret)) - 1
+
         elif isinstance(self.model, GradientBoostingRegressor):
             ret = np.zeros((vals.shape[0], self.model.n_classes_))
             for iclass in range(self.model.n_classes_):
@@ -500,15 +619,6 @@ def tree_to_tmva(outfile, nodetree, current_node, scale):
     for child in nodetree[current_node].children:
         tree_to_tmva(outfile, nodetree, child, scale)
     outfile.write((nodetree[current_node].depth + 1)*"    " + "</Node>\n")
-
-def make_iter(possible):
-    '''Make possible iterable by either returning it if it is, or putting it in a list'''
-    try:
-        bogus = iter(possible)
-    except:
-        return [possible]
-    else:
-        return possible
 
 def safe_attribute (func, default_value):
     '''Safely execute a lambda function, return default value if there is an AttributeError'''

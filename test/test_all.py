@@ -2,7 +2,9 @@
 import numpy as np
 from mlglue.tree import tree_to_tmva, BDTxgboost, BDTsklearn
 from sklearn.datasets import load_svmlight_files
-from sklearn.ensemble import GradientBoostingClassifier, GradientBoostingRegressor
+from sklearn.ensemble import GradientBoostingClassifier, GradientBoostingRegressor, AdaBoostClassifier
+from sklearn.tree import DecisionTreeClassifier
+
 import unittest
 
 def setUp_all(self):
@@ -67,10 +69,6 @@ class TestBDTsklearn(unittest.TestCase):
         print ("TestBDTsklearn test_classify_multiclass")
         model = GradientBoostingClassifier(n_estimators=10)
         model.fit(self.data_x, self.data_y)
-        print ("Shape of x:", self.data_x.shape)
-        print ("Shape of y:", self.data_y.shape)
-        print ("value of y1:", self.data_y[0])
-        print ("value of y1:", self.data_y[1])
 
         bdt = BDTsklearn(model, self.features, ["cls{0}".format(c) for c in range(len(np.unique(self.data_y)))])
 
@@ -82,7 +80,36 @@ class TestBDTsklearn(unittest.TestCase):
             predA = bdt.eval_tmva(self.data_x[irow, :])
             predB = bdt.eval(self.data_x[irow, :])
             local_dev = np.abs((predA - predB)/predA)
-            print (predA, predB, local_dev)
+            self.assertTrue(np.all(local_dev < 0.05))
+
+            dev += local_dev
+        self.assertTrue(np.all(dev < 0.01))
+
+    #do a binary classification
+    def test_classify_ada_multiclass(self):
+        print ("TestBDTsklearn test_classify_ada_multiclass")
+        model = AdaBoostClassifier(
+            DecisionTreeClassifier(max_depth=3),
+            n_estimators=5,
+            learning_rate=1)
+        model.fit(self.data_x, self.data_y)
+
+        bdt = BDTsklearn(model, self.features, ["cls{0}".format(c) for c in range(len(np.unique(self.data_y)))])
+
+        bdt.to_tmva("sklearn_ada_multiclass.xml")
+        bdt.setup_tmva("sklearn_ada_multiclass.xml")
+
+        dev = 0.0
+        for irow in range(self.data_x.shape[0]):
+            predA = bdt.eval_tmva(self.data_x[irow, :])
+            predB = bdt.eval(self.data_x[irow, :])
+            local_dev = np.abs((predA - predB)/predA)
+
+            if np.any(local_dev >= 0.05):
+                print ("TMVA: {0}".format(predA))
+                print ("Generalized Tree: {0}".format(predB))
+                print ("Difference: {0}".format(local_dev))
+
             self.assertTrue(np.all(local_dev < 0.05))
 
             dev += local_dev
