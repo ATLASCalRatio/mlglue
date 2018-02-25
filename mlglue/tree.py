@@ -567,8 +567,8 @@ class BDTsklearn(BDT):
                 ret = np.zeros((vals.shape[0], self.model.n_classes_))
                 #for t in self.model.estimators_:
                 #    ret += t.predict_proba(vals) * scale
-				for tree in self.model.estimators_:
-					classes = tree.predict(vals)
+                for tree in self.model.estimators_:
+                    classes = tree.predict(vals)
 
                 for iclass in range(self.model.n_classes_):
                     for itree, t in enumerate(self.model.estimators_[:, iclass]):
